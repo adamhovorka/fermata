@@ -1,0 +1,8 @@
+# Compiled music files
+*.raw
+*.wav
+*.mp3
+*.ogg
+
+# Vim swap files
+*.swp
