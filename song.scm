@@ -1,5 +1,8 @@
 ;; Base Definitions
 (define tempo 120)
+(define time-signature (/ 4 4))
+(define speed (/ tempo 60 4))
+
 (define resolution 256)
 (define sample-rate 48000)
 (define pi 3.141592653589793238)
@@ -28,16 +31,7 @@
 ;; No effect = identity function
 (define (no-effect x) x)
 
-;; Combines several notes or sequences into one
-(define (chord . notes)
-        (lambda (pos)
-                (/ (apply + (map
-                            (lambda (instrument) (instrument pos))
-                            notes))
-                   (length notes))))
-
-;;; }}}
-
+;;;  }}}
 ;;; {{{ Rendering functions
 
 ;; Caps the output at the resolution so it doesn't b0rk everything else.
@@ -55,15 +49,13 @@
 
 ;; Takes in a function and outputs the sampled hex values.
 (define (publish func len)
-	(define speed (/ tempo 60 4))
 	(set! len (/ len speed))
         (let loop ((position 0))
              (print (justify (func (/ position sample-rate))))
              (if (< position (* sample-rate len))
                  (loop (+ position 1)))))
 
-;;; }}}
-
+;;;  }}}
 ;;; {{{ Basic instruments
 
 ;; Basic sine wave instrument
@@ -97,31 +89,67 @@
                 (- (/ (random resolution)
                       (/ resolution 2)) 1)))
 
-;;; }}}
+;;;  }}}
+;;; {{{ "Means of combination"
 
-;(define test-instrument
+;; Combines several notes or sequences into one
+(define (chord . notes)
+        (lambda (pos)
+                (/ (apply + (map
+                            (lambda (instrument) (instrument pos))
+                            notes))
+                   (length notes))))
+
+(define (sequence instrument notes)
+        (define times
+                (let loop ((in (map cadr notes))
+                           (out '())
+                           (time 0))
+                     (if (null? in) out
+                         (loop (cdr in)
+                               (append out (list (/ (+ time (car in)) speed)))
+                               (+ time (car in))))))
+        (lambda (pos)
+                (let loop ((notes notes) (times times))
+                          (if (null? times) 0  ; If you can find a better
+                                               ; way to fix this, do it.
+                              (if (<= pos (car times))
+                                  (if (eq? (caar notes) 'off) 0
+                                      (((car instrument)
+                                                (note->freq (caar notes))) pos))
+                                  (loop (cdr notes) (cdr times)))))))
+
+;;;  }}}
+;;; {{{ Comprehension
+
+(define (transpose notes amount)
+        (let loop ((in notes) (out '()))
+                  (if (null? in) out
+                      (loop (cdr in)
+                            (if (eq? (caar in) 'off)
+                                (append out (list (car in)))
+                                (append out (list
+                                        (cons (+ (caar in) amount)
+                                              (cdar in)))))))))
+
+;;;  }}}
+
+(define test-instrument
         ;     waveform    A     D     S   R   effect
-       ;(list square-wave 0.125 0.125 0.5 0.2 no-effect))
+        (list square-wave 0.125 0.125 0.5 0.2 no-effect))
 
-;; Temporary notes
-;; We need to find a better way to do this.
-(define waveform square-wave)
-(define b (waveform (note->freq 2)))
-(define c (waveform (note->freq 3)))
-(define d (waveform (note->freq 5)))
-(define e (waveform (note->freq 7)))
-(define f (waveform (note->freq 9)))
-(define g (waveform (note->freq 10)))
-(define a (waveform (note->freq 12)))
+(define scale
+  '((0 0.25)
+    (2 0.125)
+    (4 0.125)
+    (off 0.125)
+    (5 0.375)))
 
-;; Test chord sequence
-(define I   (chord c e g))
-(define II  (chord c f a))
-(define III (chord b d g))
-(define IV  (chord c e g))
+(define scale-with-finale
+        (chord (sequence test-instrument scale)
+               (sequence test-instrument '((off 0.625) (9 0.375)))
+               ;(sequence test-instrument '((off 0.625) (12 0.375)))
+        ))
 
-(publish I   0.25)
-(publish II  0.125)
-(publish III 0.125)
-(publish IV  0.5)
+(publish scale-with-finale 1)
 (exit)
